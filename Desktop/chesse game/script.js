@@ -1,730 +1,544 @@
 // ==================== CHESS GAME ENGINE ====================
+
 class ChessGame {
     constructor() {
-        this.board = this.initializeBoard();
+        this.board = [];
+        this.currentPlayer = 'white';
         this.selectedSquare = null;
         this.validMoves = [];
-        this.gameMode = 'pvp'; // pvp or pva
-        this.aiDifficulty = 'medium';
-        this.currentPlayer = 'white';
         this.moveHistory = [];
-        this.gameStatus = 'playing';
-        this.soundEnabled = true;
         this.capturedPieces = { white: [], black: [] };
-        this.lastMove = null;
-        this.isBoardLocked = false;
-
-        // Piece values for AI
-        this.pieceValues = {
-            'p': 1,
-            'n': 3,
-            'b': 3,
-            'r': 5,
-            'q': 9,
-            'k': 0
-        };
+        this.kingPositions = { white: { row: 7, col: 4 }, black: { row: 0, col: 4 } };
+        this.castlingRights = { white: { kingside: true, queenside: true }, black: { kingside: true, queenside: true } };
+        this.enPassantSquare = null;
+        this.initializeBoard();
     }
 
-    // Initialize chess board with standard starting position
     initializeBoard() {
-        const board = Array(8).fill(null).map(() => Array(8).fill(null));
-        
-        // Set up pieces
-        const setupRow = ['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'];
-        
+        // Create empty board
+        this.board = Array(8).fill(null).map(() => Array(8).fill(null));
+
         // Black pieces
-        for (let i = 0; i < 8; i++) {
-            board[0][i] = setupRow[i];
-            board[1][i] = 'p';
-        }
-        
+        this.board[0][0] = { type: 'rook', player: 'black' };
+        this.board[0][1] = { type: 'knight', player: 'black' };
+        this.board[0][2] = { type: 'bishop', player: 'black' };
+        this.board[0][3] = { type: 'queen', player: 'black' };
+        this.board[0][4] = { type: 'king', player: 'black' };
+        this.board[0][5] = { type: 'bishop', player: 'black' };
+        this.board[0][6] = { type: 'knight', player: 'black' };
+        this.board[0][7] = { type: 'rook', player: 'black' };
+        for (let i = 0; i < 8; i++) this.board[1][i] = { type: 'pawn', player: 'black' };
+
         // White pieces
-        for (let i = 0; i < 8; i++) {
-            board[6][i] = 'P';
-            board[7][i] = setupRow[i].toUpperCase();
+        for (let i = 0; i < 8; i++) this.board[6][i] = { type: 'pawn', player: 'white' };
+        this.board[7][0] = { type: 'rook', player: 'white' };
+        this.board[7][1] = { type: 'knight', player: 'white' };
+        this.board[7][2] = { type: 'bishop', player: 'white' };
+        this.board[7][3] = { type: 'queen', player: 'white' };
+        this.board[7][4] = { type: 'king', player: 'white' };
+        this.board[7][5] = { type: 'bishop', player: 'white' };
+        this.board[7][6] = { type: 'knight', player: 'white' };
+        this.board[7][7] = { type: 'rook', player: 'white' };
+    }
+
+    isInCheck(player) {
+        const kingPos = this.kingPositions[player];
+        const enemy = player === 'white' ? 'black' : 'white';
+        return this.isSquareAttackedBy(kingPos.row, kingPos.col, enemy);
+    }
+
+    isSquareAttackedBy(row, col, attacker) {
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const piece = this.board[r][c];
+                if (piece && piece.player === attacker) {
+                    const moves = this.getPieceMoves(r, c, true);
+                    if (moves.some(m => m.row === row && m.col === col)) {
+                        return true;
+                    }
+                }
+            }
         }
-        
-        return board;
+        return false;
     }
 
-    // Get piece at position
-    getPiece(row, col) {
-        if (row < 0 || row > 7 || col < 0 || col > 7) return null;
-        return this.board[row][col];
-    }
-
-    // Check if piece belongs to player
-    isPlayerPiece(piece, player) {
-        if (!piece) return false;
-        return player === 'white' ? piece === piece.toUpperCase() : piece === piece.toLowerCase();
-    }
-
-    // Get all valid moves for a piece
-    getValidMoves(row, col) {
+    getPieceMoves(row, col, ignoreCheck = false) {
         const piece = this.board[row][col];
         if (!piece) return [];
 
-        const moves = [];
-        const type = piece.toLowerCase();
+        let moves = [];
+        switch (piece.type) {
+            case 'pawn': moves = this.getPawnMoves(row, col); break;
+            case 'knight': moves = this.getKnightMoves(row, col); break;
+            case 'bishop': moves = this.getBishopMoves(row, col); break;
+            case 'rook': moves = this.getRookMoves(row, col); break;
+            case 'queen': moves = this.getQueenMoves(row, col); break;
+            case 'king': moves = this.getKingMoves(row, col); break;
+        }
 
-        switch (type) {
-            case 'p':
-                this.getPawnMoves(row, col, piece, moves);
-                break;
-            case 'n':
-                this.getKnightMoves(row, col, piece, moves);
-                break;
-            case 'b':
-                this.getBishopMoves(row, col, piece, moves);
-                break;
-            case 'r':
-                this.getRookMoves(row, col, piece, moves);
-                break;
-            case 'q':
-                this.getQueenMoves(row, col, piece, moves);
-                break;
-            case 'k':
-                this.getKingMoves(row, col, piece, moves);
-                break;
+        if (!ignoreCheck) {
+            moves = moves.filter(move => {
+                const originalPiece = this.board[move.row][move.col];
+                this.board[move.row][move.col] = piece;
+                this.board[row][col] = null;
+                if (piece.type === 'king') {
+                    this.kingPositions[piece.player] = { row: move.row, col: move.col };
+                }
+                const inCheck = this.isInCheck(piece.player);
+                this.board[row][col] = piece;
+                this.board[move.row][move.col] = originalPiece;
+                if (piece.type === 'king') {
+                    this.kingPositions[piece.player] = { row, col };
+                }
+                return !inCheck;
+            });
         }
 
         return moves;
     }
 
-    // Pawn moves
-    getPawnMoves(row, col, piece, moves) {
-        const direction = piece === 'P' ? -1 : 1;
-        const startRow = piece === 'P' ? 6 : 1;
+    getPawnMoves(row, col) {
+        const piece = this.board[row][col];
+        const moves = [];
+        const direction = piece.player === 'white' ? -1 : 1;
+        const startRow = piece.player === 'white' ? 6 : 1;
 
-        // Move forward
+        // Forward move
         const nextRow = row + direction;
         if (nextRow >= 0 && nextRow <= 7 && !this.board[nextRow][col]) {
-            moves.push([nextRow, col]);
-
+            moves.push({ row: nextRow, col });
             // Double move from start
             if (row === startRow && !this.board[row + 2 * direction][col]) {
-                moves.push([row + 2 * direction, col]);
+                moves.push({ row: row + 2 * direction, col });
             }
         }
 
         // Captures
         for (let newCol of [col - 1, col + 1]) {
             if (newCol >= 0 && newCol <= 7) {
-                const captureRow = row + direction;
-                if (captureRow >= 0 && captureRow <= 7) {
-                    const target = this.board[captureRow][newCol];
-                    if (target && this.isPlayerPiece(target, piece === 'P' ? 'black' : 'white')) {
-                        moves.push([captureRow, newCol]);
-                    }
-                }
-            }
-        }
-    }
-
-    // Knight moves
-    getKnightMoves(row, col, piece, moves) {
-        const knightMoves = [
-            [-2, -1], [-2, 1], [-1, -2], [-1, 2],
-            [1, -2], [1, 2], [2, -1], [2, 1]
-        ];
-
-        for (let [dRow, dCol] of knightMoves) {
-            const newRow = row + dRow;
-            const newCol = col + dCol;
-
-            if (newRow >= 0 && newRow <= 7 && newCol >= 0 && newCol <= 7) {
-                const target = this.board[newRow][newCol];
-                if (!target || !this.isPlayerPiece(target, piece === 'N' ? 'white' : 'black')) {
-                    moves.push([newRow, newCol]);
-                }
-            }
-        }
-    }
-
-    // Bishop moves
-    getBishopMoves(row, col, piece, moves) {
-        const directions = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
-        this.getSlidingMoves(row, col, piece, directions, moves);
-    }
-
-    // Rook moves
-    getRookMoves(row, col, piece, moves) {
-        const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
-        this.getSlidingMoves(row, col, piece, directions, moves);
-    }
-
-    // Queen moves
-    getQueenMoves(row, col, piece, moves) {
-        const directions = [
-            [-1, -1], [-1, 0], [-1, 1],
-            [0, -1], [0, 1],
-            [1, -1], [1, 0], [1, 1]
-        ];
-        this.getSlidingMoves(row, col, piece, directions, moves);
-    }
-
-    // Sliding moves helper
-    getSlidingMoves(row, col, piece, directions, moves) {
-        for (let [dRow, dCol] of directions) {
-            let newRow = row + dRow;
-            let newCol = col + dCol;
-
-            while (newRow >= 0 && newRow <= 7 && newCol >= 0 && newCol <= 7) {
-                const target = this.board[newRow][newCol];
-
-                if (!target) {
-                    moves.push([newRow, newCol]);
-                } else {
-                    if (!this.isPlayerPiece(target, piece === piece.toUpperCase() ? 'white' : 'black')) {
-                        moves.push([newRow, newCol]);
-                    }
-                    break;
-                }
-
-                newRow += dRow;
-                newCol += dCol;
-            }
-        }
-    }
-
-    // King moves
-    getKingMoves(row, col, piece, moves) {
-        const directions = [
-            [-1, -1], [-1, 0], [-1, 1],
-            [0, -1], [0, 1],
-            [1, -1], [1, 0], [1, 1]
-        ];
-
-        for (let [dRow, dCol] of directions) {
-            const newRow = row + dRow;
-            const newCol = col + dCol;
-
-            if (newRow >= 0 && newRow <= 7 && newCol >= 0 && newCol <= 7) {
-                const target = this.board[newRow][newCol];
-                if (!target || !this.isPlayerPiece(target, piece === 'K' ? 'white' : 'black')) {
-                    moves.push([newRow, newCol]);
-                }
-            }
-        }
-    }
-
-    // Make a move
-    makeMove(fromRow, fromCol, toRow, toCol) {
-        const piece = this.board[fromRow][fromCol];
-        const target = this.board[toRow][toCol];
-
-        // Capture piece
-        if (target) {
-            this.capturedPieces[this.currentPlayer].push(target);
-            this.playSound('captureSound');
-        } else {
-            this.playSound('moveSound');
-        }
-
-        // Move piece
-        this.board[toRow][toCol] = piece;
-        this.board[fromRow][fromCol] = null;
-
-        // Store move in history
-        const move = {
-            from: [fromRow, fromCol],
-            to: [toRow, toCol],
-            piece: piece,
-            captured: target,
-            moveNumber: Math.ceil((this.moveHistory.length + 1) / 2)
-        };
-        this.moveHistory.push(move);
-        this.lastMove = move;
-
-        // Check for check
-        if (this.isInCheck(this.currentPlayer === 'white' ? 'black' : 'white')) {
-            this.playSound('checkSound');
-        }
-
-        // Switch player
-        this.currentPlayer = this.currentPlayer === 'white' ? 'black' : 'white';
-
-        return true;
-    }
-
-    // Check if king is in check
-    isInCheck(player) {
-        const king = player === 'white' ? 'K' : 'k';
-        let kingPos = null;
-
-        for (let row = 0; row < 8; row++) {
-            for (let col = 0; col < 8; col++) {
-                if (this.board[row][col] === king) {
-                    kingPos = [row, col];
-                    break;
-                }
-            }
-            if (kingPos) break;
-        }
-
-        if (!kingPos) return false;
-
-        // Check if any opponent piece can attack the king
-        for (let row = 0; row < 8; row++) {
-            for (let col = 0; col < 8; col++) {
-                const piece = this.board[row][col];
-                if (piece && !this.isPlayerPiece(piece, player)) {
-                    const moves = this.getValidMoves(row, col);
-                    if (moves.some(move => move[0] === kingPos[0] && move[1] === kingPos[1])) {
-                        return true;
-                    }
+                const target = this.board[nextRow][newCol];
+                if (target && target.player !== piece.player) {
+                    moves.push({ row: nextRow, col: newCol });
+                } else if (this.enPassantSquare && nextRow === this.enPassantSquare.row && newCol === this.enPassantSquare.col) {
+                    moves.push({ row: nextRow, col: newCol });
                 }
             }
         }
 
-        return false;
+        return moves;
     }
 
-    // Check if player has valid moves
-    hasValidMoves(player) {
-        for (let row = 0; row < 8; row++) {
-            for (let col = 0; col < 8; col++) {
-                const piece = this.board[row][col];
-                if (piece && this.isPlayerPiece(piece, player)) {
-                    if (this.getValidMoves(row, col).length > 0) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
-    }
-
-    // AI Move
-    makeAIMove() {
-        const moves = this.getAllValidMoves('black');
-        if (moves.length === 0) return false;
-
-        let bestMove;
-        if (this.aiDifficulty === 'easy') {
-            bestMove = moves[Math.floor(Math.random() * moves.length)];
-        } else if (this.aiDifficulty === 'medium') {
-            bestMove = this.getMediumAIMove(moves);
-        } else {
-            bestMove = this.getHardAIMove(moves);
-        }
-
-        return this.makeMove(bestMove.from[0], bestMove.from[1], bestMove.to[0], bestMove.to[1]);
-    }
-
-    // Get all valid moves for a player
-    getAllValidMoves(player) {
+    getKnightMoves(row, col) {
         const moves = [];
-        for (let row = 0; row < 8; row++) {
-            for (let col = 0; col < 8; col++) {
-                const piece = this.board[row][col];
-                if (piece && this.isPlayerPiece(piece, player)) {
-                    const pieceMoves = this.getValidMoves(row, col);
-                    for (let move of pieceMoves) {
-                        moves.push({
-                            from: [row, col],
-                            to: move,
-                            piece: piece
-                        });
-                    }
+        const deltas = [[2, 1], [2, -1], [-2, 1], [-2, -1], [1, 2], [1, -2], [-1, 2], [-1, -2]];
+        
+        for (let [dRow, dCol] of deltas) {
+            const newRow = row + dRow;
+            const newCol = col + dCol;
+            if (newRow >= 0 && newRow <= 7 && newCol >= 0 && newCol <= 7) {
+                const target = this.board[newRow][newCol];
+                if (!target || target.player !== this.board[row][col].player) {
+                    moves.push({ row: newRow, col: newCol });
                 }
             }
         }
         return moves;
     }
 
-    // Medium AI - Random + some capture preference
-    getMediumAIMove(moves) {
-        const captureMoves = moves.filter(m => this.board[m.to[0]][m.to[1]]);
-        
-        if (captureMoves.length > 0 && Math.random() > 0.5) {
-            return captureMoves[Math.floor(Math.random() * captureMoves.length)];
-        }
-        
-        return moves[Math.floor(Math.random() * moves.length)];
+    getBishopMoves(row, col) {
+        return this.getDiagonalMoves(row, col);
     }
 
-    // Hard AI - Minimax with evaluation
-    getHardAIMove(moves) {
-        let bestMove = moves[0];
-        let bestScore = -Infinity;
+    getRookMoves(row, col) {
+        return this.getStraightMoves(row, col);
+    }
 
-        for (let move of moves.slice(0, Math.min(moves.length, 20))) {
-            const score = this.evaluateMove(move);
-            if (score > bestScore) {
-                bestScore = score;
-                bestMove = move;
+    getQueenMoves(row, col) {
+        return [...this.getStraightMoves(row, col), ...this.getDiagonalMoves(row, col)];
+    }
+
+    getStraightMoves(row, col) {
+        const moves = [];
+        const piece = this.board[row][col];
+        const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+        
+        for (let [dRow, dCol] of directions) {
+            for (let i = 1; i <= 7; i++) {
+                const newRow = row + i * dRow;
+                const newCol = col + i * dCol;
+                if (newRow < 0 || newRow > 7 || newCol < 0 || newCol > 7) break;
+                const target = this.board[newRow][newCol];
+                if (!target) {
+                    moves.push({ row: newRow, col: newCol });
+                } else {
+                    if (target.player !== piece.player) moves.push({ row: newRow, col: newCol });
+                    break;
+                }
+            }
+        }
+        return moves;
+    }
+
+    getDiagonalMoves(row, col) {
+        const moves = [];
+        const piece = this.board[row][col];
+        const directions = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+        
+        for (let [dRow, dCol] of directions) {
+            for (let i = 1; i <= 7; i++) {
+                const newRow = row + i * dRow;
+                const newCol = col + i * dCol;
+                if (newRow < 0 || newRow > 7 || newCol < 0 || newCol > 7) break;
+                const target = this.board[newRow][newCol];
+                if (!target) {
+                    moves.push({ row: newRow, col: newCol });
+                } else {
+                    if (target.player !== piece.player) moves.push({ row: newRow, col: newCol });
+                    break;
+                }
+            }
+        }
+        return moves;
+    }
+
+    getKingMoves(row, col) {
+        const moves = [];
+        const piece = this.board[row][col];
+        
+        for (let dRow = -1; dRow <= 1; dRow++) {
+            for (let dCol = -1; dCol <= 1; dCol++) {
+                if (dRow === 0 && dCol === 0) continue;
+                const newRow = row + dRow;
+                const newCol = col + dCol;
+                if (newRow >= 0 && newRow <= 7 && newCol >= 0 && newCol <= 7) {
+                    const target = this.board[newRow][newCol];
+                    if (!target || target.player !== piece.player) {
+                        moves.push({ row: newRow, col: newCol });
+                    }
+                }
             }
         }
 
-        return bestMove;
+        // Castling
+        if (!this.isInCheck(piece.player)) {
+            const castlingRight = piece.player === 'white' ? this.castlingRights.white : this.castlingRights.black;
+            const backRow = piece.player === 'white' ? 7 : 0;
+            
+            if (castlingRight.kingside && !this.board[backRow][5] && !this.board[backRow][6]) {
+                if (this.board[backRow][7] && this.board[backRow][7].type === 'rook') {
+                    moves.push({ row: backRow, col: 6, castling: 'kingside' });
+                }
+            }
+            
+            if (castlingRight.queenside && !this.board[backRow][1] && !this.board[backRow][2] && !this.board[backRow][3]) {
+                if (this.board[backRow][0] && this.board[backRow][0].type === 'rook') {
+                    moves.push({ row: backRow, col: 2, castling: 'queenside' });
+                }
+            }
+        }
+
+        return moves;
     }
 
-    // Evaluate a move
-    evaluateMove(move) {
-        let score = 0;
-        const target = this.board[move.to[0]][move.to[1]];
+    makeMove(fromRow, fromCol, toRow, toCol) {
+        const piece = this.board[fromRow][fromCol];
+        const target = this.board[toRow][toCol];
+        const moveNotation = `${String.fromCharCode(97 + fromCol)}${8 - fromRow}-${String.fromCharCode(97 + toCol)}${8 - toRow}`;
 
-        // Capture value
+        // Capture
         if (target) {
-            score += this.pieceValues[target.toLowerCase()] * 10;
+            this.capturedPieces[piece.player].push(target);
         }
 
-        // Piece development
-        const piece = move.piece.toLowerCase();
-        const distance = Math.abs(move.to[0] - 3.5) + Math.abs(move.to[1] - 3.5);
-        score += (distance / 7) * 5;
-
-        // Random for variety
-        score += Math.random() * 5;
-
-        return score;
-    }
-
-    // Undo last move
-    undoMove() {
-        if (this.moveHistory.length === 0) return false;
-
-        const move = this.moveHistory.pop();
-        
-        // Restore piece
-        this.board[move.from[0]][move.from[1]] = move.piece;
-        this.board[move.to[0]][move.to[1]] = move.captured || null;
-
-        // Remove from captured
-        if (move.captured) {
-            this.capturedPieces[this.currentPlayer === 'white' ? 'black' : 'white'].pop();
+        // En passant
+        if (piece.type === 'pawn' && fromCol !== toCol && !target) {
+            const capturedRow = fromRow;
+            const capturedPawn = this.board[capturedRow][toCol];
+            this.capturedPieces[piece.player].push(capturedPawn);
+            this.board[capturedRow][toCol] = null;
         }
 
-        // Switch player
+        // Move piece
+        this.board[toRow][toCol] = piece;
+        this.board[fromRow][fromCol] = null;
+
+        // Update king position
+        if (piece.type === 'king') {
+            this.kingPositions[piece.player] = { row: toRow, col: toCol };
+        }
+
+        // Castling
+        if (piece.type === 'king' && Math.abs(fromCol - toCol) === 2) {
+            const isKingside = toCol > fromCol;
+            const rookCol = isKingside ? 7 : 0;
+            const newRookCol = isKingside ? 5 : 3;
+            const rook = this.board[fromRow][rookCol];
+            this.board[fromRow][newRookCol] = rook;
+            this.board[fromRow][rookCol] = null;
+        }
+
+        // Update castling rights
+        if (piece.type === 'king') {
+            if (piece.player === 'white') this.castlingRights.white = { kingside: false, queenside: false };
+            else this.castlingRights.black = { kingside: false, queenside: false };
+        }
+        if (piece.type === 'rook') {
+            const castleObj = piece.player === 'white' ? this.castlingRights.white : this.castlingRights.black;
+            if (fromCol === 7) castleObj.kingside = false;
+            if (fromCol === 0) castleObj.queenside = false;
+        }
+
+        // Pawn promotion
+        if (piece.type === 'pawn' && (toRow === 0 || toRow === 7)) {
+            this.board[toRow][toCol] = { type: 'queen', player: piece.player };
+            piece.type = 'queen';
+        }
+
+        // En passant square
+        if (piece.type === 'pawn' && Math.abs(toRow - fromRow) === 2) {
+            this.enPassantSquare = { row: (fromRow + toRow) / 2, col: toCol };
+        } else {
+            this.enPassantSquare = null;
+        }
+
+        // Record move
+        this.moveHistory.push(moveNotation);
         this.currentPlayer = this.currentPlayer === 'white' ? 'black' : 'white';
 
         return true;
     }
 
-    // Reset game
+    hasValidMoves(player) {
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const piece = this.board[r][c];
+                if (piece && piece.player === player) {
+                    if (this.getPieceMoves(r, c).length > 0) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    isCheckmate(player) {
+        return this.isInCheck(player) && !this.hasValidMoves(player);
+    }
+
+    isStalemate(player) {
+        return !this.isInCheck(player) && !this.hasValidMoves(player);
+    }
+
     reset() {
-        this.board = this.initializeBoard();
+        this.board = [];
+        this.currentPlayer = 'white';
         this.selectedSquare = null;
         this.validMoves = [];
-        this.currentPlayer = 'white';
         this.moveHistory = [];
-        this.gameStatus = 'playing';
         this.capturedPieces = { white: [], black: [] };
-        this.lastMove = null;
-        this.isBoardLocked = false;
-    }
-
-    // Play sound
-    playSound(soundId) {
-        if (!this.soundEnabled) return;
-        const audio = document.getElementById(soundId);
-        if (audio) {
-            audio.currentTime = 0;
-            audio.play().catch(() => {});
-        }
-    }
-
-    // Piece count
-    getCapturedCount(player) {
-        return this.capturedPieces[player].reduce((sum, p) => sum + (this.pieceValues[p.toLowerCase()] || 0), 0);
+        this.kingPositions = { white: { row: 7, col: 4 }, black: { row: 0, col: 4 } };
+        this.castlingRights = { white: { kingside: true, queenside: true }, black: { kingside: true, queenside: true } };
+        this.enPassantSquare = null;
+        this.initializeBoard();
     }
 }
 
 // ==================== UI MANAGER ====================
+
 class UIManager {
     constructor(game) {
         this.game = game;
-        this.boardElement = document.getElementById('chessboard');
-        this.initializeEventListeners();
+        this.soundEnabled = true;
+        this.setupEventListeners();
+        this.showLoader();
     }
 
-    initializeEventListeners() {
-        document.getElementById('playerVsPlayerBtn').addEventListener('click', () => this.setGameMode('pvp'));
-        document.getElementById('playerVsAIBtn').addEventListener('click', () => this.setGameMode('pva'));
-        document.getElementById('resetBtn').addEventListener('click', () => this.resetGame());
-        document.getElementById('soundToggle').addEventListener('click', () => this.toggleSound());
-        document.getElementById('undoBtn').addEventListener('click', () => this.undoMove());
-        document.getElementById('difficultySelect').addEventListener('change', (e) => {
-            this.game.aiDifficulty = e.target.value;
-        });
-
-        // Hide loader after 2.5 seconds
+    showLoader() {
+        const loader = document.getElementById('loader');
         setTimeout(() => {
-            document.getElementById('loaderContainer').style.display = 'none';
-            document.getElementById('mainContainer').style.display = 'block';
-            this.renderBoard();
+            loader.style.animation = 'fadeOut 0.5s ease-in-out forwards';
         }, 2500);
     }
 
-    setGameMode(mode) {
-        this.game.gameMode = mode;
-        document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
-        
-        if (mode === 'pvp') {
-            document.getElementById('playerVsPlayerBtn').classList.add('active');
-            document.getElementById('difficultySelector').style.display = 'none';
-            document.getElementById('gameModeDisplay').textContent = 'Player vs Player';
-        } else {
-            document.getElementById('playerVsAIBtn').classList.add('active');
-            document.getElementById('difficultySelector').style.display = 'flex';
-            document.getElementById('gameModeDisplay').textContent = 'Player vs AI';
-        }
-
-        this.resetGame();
+    setupEventListeners() {
+        document.getElementById('resetBtn').addEventListener('click', () => this.resetGame());
+        document.getElementById('soundToggle').addEventListener('click', () => this.toggleSound());
+        document.getElementById('playAgainBtn').addEventListener('click', () => this.resetGame());
     }
 
     renderBoard() {
-        this.boardElement.innerHTML = '';
+        const board = document.getElementById('chessboard');
+        board.innerHTML = '';
 
         for (let row = 0; row < 8; row++) {
             for (let col = 0; col < 8; col++) {
                 const square = document.createElement('div');
-                const isLight = (row + col) % 2 === 0;
-
-                square.className = `square ${isLight ? 'light' : 'dark'}`;
+                square.className = `square ${(row + col) % 2 === 0 ? 'light' : 'dark'}`;
                 square.dataset.row = row;
                 square.dataset.col = col;
 
-                // Highlight last move
-                if (this.game.lastMove) {
-                    if ((row === this.game.lastMove.from[0] && col === this.game.lastMove.from[1]) ||
-                        (row === this.game.lastMove.to[0] && col === this.game.lastMove.to[1])) {
-                        square.classList.add('last-move');
-                    }
+                // Highlight valid moves
+                if (this.game.validMoves.some(m => m.row === row && m.col === col)) {
+                    square.classList.add('valid-move');
                 }
 
                 // Highlight selected square
-                if (this.game.selectedSquare && row === this.game.selectedSquare[0] && col === this.game.selectedSquare[1]) {
-                    square.classList.add('selected');
+                if (this.game.selectedSquare && this.game.selectedSquare.row === row && this.game.selectedSquare.col === col) {
+                    square.classList.add('valid-move');
                 }
 
-                // Highlight valid moves
-                for (let move of this.game.validMoves) {
-                    if (row === move[0] && col === move[1]) {
-                        square.classList.add('highlighted');
-                    }
+                // Highlight check
+                const piece = this.game.board[row][col];
+                if (piece && piece.type === 'king' && piece.player === this.game.currentPlayer && this.game.isInCheck(piece.player)) {
+                    square.classList.add('check');
                 }
 
-                const piece = this.game.getPiece(row, col);
+                // Add piece
                 if (piece) {
-                    const pieceElement = document.createElement('div');
-                    pieceElement.className = 'piece';
-                    pieceElement.textContent = this.getPieceUnicode(piece);
-                    pieceElement.draggable = true;
-                    pieceElement.addEventListener('dragstart', (e) => this.handleDragStart(e, row, col));
-                    square.appendChild(pieceElement);
+                    const pieceEl = document.createElement('span');
+                    pieceEl.className = 'piece-element';
+                    pieceEl.textContent = this.getPieceSymbol(piece);
+                    square.appendChild(pieceEl);
                 }
 
                 square.addEventListener('click', () => this.handleSquareClick(row, col));
-                square.addEventListener('dragover', (e) => this.handleDragOver(e));
-                square.addEventListener('drop', (e) => this.handleDrop(e, row, col));
-
-                this.boardElement.appendChild(square);
+                board.appendChild(square);
             }
         }
-
-        this.updateUI();
     }
 
-    getPieceUnicode(piece) {
-        const pieces = {
-            'P': '♙', 'p': '♟',
-            'R': '♖', 'r': '♜',
-            'N': '♘', 'n': '♞',
-            'B': '♗', 'b': '♝',
-            'Q': '♕', 'q': '♛',
-            'K': '♔', 'k': '♚'
+    getPieceSymbol(piece) {
+        const symbols = {
+            'white_pawn': '♙', 'white_knight': '♘', 'white_bishop': '♗',
+            'white_rook': '♖', 'white_queen': '♕', 'white_king': '♔',
+            'black_pawn': '♟', 'black_knight': '♞', 'black_bishop': '♝',
+            'black_rook': '♜', 'black_queen': '♛', 'black_king': '♚'
         };
-        return pieces[piece] || '';
+        return symbols[`${piece.player}_${piece.type}`] || '';
     }
 
     handleSquareClick(row, col) {
-        if (this.game.isBoardLocked) return;
+        const piece = this.game.board[row][col];
 
-        if (this.game.gameMode === 'pva' && this.game.currentPlayer === 'black') return;
-
-        const piece = this.game.getPiece(row, col);
-
-        if (this.game.selectedSquare) {
-            const [fromRow, fromCol] = this.game.selectedSquare;
-
-            if (row === fromRow && col === fromCol) {
-                this.game.selectedSquare = null;
-                this.game.validMoves = [];
-            } else {
-                const validMove = this.game.validMoves.some(move => move[0] === row && move[1] === col);
-
-                if (validMove) {
-                    this.game.makeMove(fromRow, fromCol, row, col);
-                    this.game.selectedSquare = null;
-                    this.game.validMoves = [];
-
-                    this.renderBoard();
-
-                    // AI move
-                    if (this.game.gameMode === 'pva' && this.game.currentPlayer === 'black') {
-                        this.game.isBoardLocked = true;
-                        setTimeout(() => {
-                            this.game.makeAIMove();
-                            this.game.isBoardLocked = false;
-                            this.renderBoard();
-                        }, 1000);
-                    }
-                } else if (piece && this.game.isPlayerPiece(piece, this.game.currentPlayer)) {
-                    this.game.selectedSquare = [row, col];
-                    this.game.validMoves = this.game.getValidMoves(row, col);
-                } else {
-                    this.game.selectedSquare = null;
-                    this.game.validMoves = [];
-                }
-            }
-        } else if (piece && this.game.isPlayerPiece(piece, this.game.currentPlayer)) {
-            this.game.selectedSquare = [row, col];
-            this.game.validMoves = this.game.getValidMoves(row, col);
-        }
-
-        this.renderBoard();
-    }
-
-    handleDragStart(e, row, col) {
-        const piece = this.game.getPiece(row, col);
-        if (!piece || !this.game.isPlayerPiece(piece, this.game.currentPlayer)) {
-            e.preventDefault();
+        // Case 1: Select a piece
+        if (piece && piece.player === this.game.currentPlayer && !this.game.selectedSquare) {
+            this.game.selectedSquare = { row, col };
+            this.game.validMoves = this.game.getPieceMoves(row, col);
+            this.renderBoard();
             return;
         }
 
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('fromRow', row);
-        e.dataTransfer.setData('fromCol', col);
-    }
+        // Case 2: Click same piece again = deselect
+        if (this.game.selectedSquare && row === this.game.selectedSquare.row && col === this.game.selectedSquare.col) {
+            this.game.selectedSquare = null;
+            this.game.validMoves = [];
+            this.renderBoard();
+            return;
+        }
 
-    handleDragOver(e) {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-    }
-
-    handleDrop(e, toRow, toCol) {
-        e.preventDefault();
-        const fromRow = parseInt(e.dataTransfer.getData('fromRow'));
-        const fromCol = parseInt(e.dataTransfer.getData('fromCol'));
-
-        const validMove = this.game.getValidMoves(fromRow, fromCol).some(
-            move => move[0] === toRow && move[1] === toCol
-        );
-
-        if (validMove) {
-            this.game.makeMove(fromRow, fromCol, toRow, toCol);
+        // Case 3: Click valid move
+        if (this.game.selectedSquare && this.game.validMoves.some(m => m.row === row && m.col === col)) {
+            this.game.makeMove(this.game.selectedSquare.row, this.game.selectedSquare.col, row, col);
+            this.playMoveSound();
             this.game.selectedSquare = null;
             this.game.validMoves = [];
 
-            this.renderBoard();
-
-            if (this.game.gameMode === 'pva' && this.game.currentPlayer === 'black') {
-                this.game.isBoardLocked = true;
-                setTimeout(() => {
-                    this.game.makeAIMove();
-                    this.game.isBoardLocked = false;
-                    this.renderBoard();
-                }, 1000);
+            // Check game status
+            if (this.game.isCheckmate(this.game.currentPlayer)) {
+                this.showResult(`${this.game.currentPlayer === 'white' ? 'Black' : 'White'} Wins!`, '🏆');
+            } else if (this.game.isStalemate(this.game.currentPlayer)) {
+                this.showResult('Draw - Stalemate', '🤝');
+            } else if (this.game.isInCheck(this.game.currentPlayer)) {
+                this.playCheckSound();
             }
+
+            this.renderBoard();
+            this.updateUI();
         }
     }
 
     updateUI() {
-        document.getElementById('whiteCaptured').textContent = `Captured: ${this.game.getCapturedCount('white')}`;
-        document.getElementById('blackCaptured').textContent = `Captured: ${this.game.getCapturedCount('black')}`;
-        document.getElementById('whiteTurn').textContent = this.game.currentPlayer === 'white' ? 'Your Turn' : 'Waiting...';
-        document.getElementById('blackTurn').textContent = this.game.currentPlayer === 'black' ? 'Your Turn' : 'Waiting...';
-        document.getElementById('moveHistory').textContent = `Move: ${this.game.moveHistory.length + 1}`;
+        document.getElementById('turnDisplay').textContent = `${this.game.currentPlayer === 'white' ? 'White' : 'Black'}'s Turn`;
+        
+        // Update captured pieces
+        const whiteCapturedDiv = document.getElementById('whiteCaptured');
+        const blackCapturedDiv = document.getElementById('blackCaptured');
+        whiteCapturedDiv.innerHTML = this.game.capturedPieces.black.map(p => this.getPieceSymbol(p)).join('');
+        blackCapturedDiv.innerHTML = this.game.capturedPieces.white.map(p => this.getPieceSymbol(p)).join('');
 
-        this.updateMoveHistory();
-
-        // Check status
-        if (this.game.isInCheck(this.game.currentPlayer)) {
-            document.getElementById('gameStatus').textContent = '⚠️ Check!';
-            this.boardElement.classList.add('check-animation');
-            setTimeout(() => this.boardElement.classList.remove('check-animation'), 500);
-        } else if (!this.game.hasValidMoves(this.game.currentPlayer)) {
-            if (this.game.isInCheck(this.game.currentPlayer)) {
-                document.getElementById('gameStatus').textContent = '🏁 Checkmate!';
-                this.game.gameStatus = 'checkmate';
-            } else {
-                document.getElementById('gameStatus').textContent = '🤝 Stalemate!';
-                this.game.gameStatus = 'stalemate';
-            }
-        } else {
-            document.getElementById('gameStatus').textContent = `${this.game.currentPlayer.toUpperCase()} to move`;
-        }
-    }
-
-    updateMoveHistory() {
-        const historyList = document.getElementById('historyList');
-        historyList.innerHTML = '';
-
-        this.game.moveHistory.forEach((move, index) => {
-            const moveElement = document.createElement('div');
-            moveElement.className = 'history-move';
-            const fromPos = String.fromCharCode(97 + move.from[1]) + (8 - move.from[0]);
-            const toPos = String.fromCharCode(97 + move.to[1]) + (8 - move.to[0]);
-            moveElement.textContent = `${move.piece.toUpperCase()} ${fromPos}-${toPos}`;
-            historyList.appendChild(moveElement);
-        });
+        // Update move history
+        const historyDiv = document.getElementById('moveHistory');
+        historyDiv.innerHTML = this.game.moveHistory.map(move => `<span class="move-item">${move}</span>`).join('');
     }
 
     resetGame() {
         this.game.reset();
+        document.getElementById('resultModal').classList.remove('show');
         this.renderBoard();
+        this.updateUI();
+    }
+
+    showResult(message, emoji) {
+        document.getElementById('resultTitle').textContent = 'Game Over!';
+        document.getElementById('resultMessage').textContent = message;
+        document.querySelector('.result-emoji').textContent = emoji;
+        document.getElementById('resultModal').classList.add('show');
+    }
+
+    playMoveSound() {
+        if (!this.soundEnabled) return;
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const now = audioContext.currentTime;
+        
+        // Wooden knock sound
+        const osc = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        osc.connect(gain);
+        gain.connect(audioContext.destination);
+        
+        osc.frequency.setValueAtTime(150, now);
+        osc.frequency.exponentialRampToValueAtTime(80, now + 0.08);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+        
+        osc.start(now);
+        osc.stop(now + 0.08);
+    }
+
+    playCheckSound() {
+        if (!this.soundEnabled) return;
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const now = audioContext.currentTime;
+        
+        const osc = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        osc.connect(gain);
+        gain.connect(audioContext.destination);
+        
+        osc.frequency.setValueAtTime(500, now);
+        osc.frequency.setValueAtTime(650, now + 0.1);
+        osc.frequency.setValueAtTime(500, now + 0.2);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+        
+        osc.start(now);
+        osc.stop(now + 0.2);
     }
 
     toggleSound() {
-        this.game.soundEnabled = !this.game.soundEnabled;
-        document.getElementById('soundToggle').classList.toggle('muted');
-    }
-
-    undoMove() {
-        if (this.game.moveHistory.length > 0) {
-            this.game.undoMove();
-            if (this.game.gameMode === 'pva' && this.game.moveHistory.length > 0) {
-                this.game.undoMove();
-            }
-            this.renderBoard();
-        }
+        this.soundEnabled = !this.soundEnabled;
+        const btn = document.getElementById('soundToggle');
+        btn.classList.toggle('muted');
+        btn.textContent = this.soundEnabled ? '🔊' : '🔇';
     }
 }
 
-// ==================== ADVANCED SOUND GENERATION ====================
-function generateChessSounds() {
-    // Move sound - pluck
-    const moveSound = document.getElementById('moveSound');
-    if (moveSound && moveSound.src.includes('base64')) {
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const now = audioContext.currentTime;
-        const osc = audioContext.createOscillator();
-        const gain = audioContext.createGain();
+// ==================== GAME INITIALIZATION ====================
 
-        osc.connect(gain);
-        gain.connect(audioContext.destination);
-
-        osc.frequency.setValueAtTime(440, now);
-        osc.frequency.exponentialRampToValueAtTime(200, now + 0.1);
-        gain.gain.setValueAtTime(0.3, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-
-        osc.start(now);
-        osc.stop(now + 0.1);
-    }
-}
-
-// ==================== INITIALIZATION ====================
-document.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', () => {
     const game = new ChessGame();
     const ui = new UIManager(game);
-    
-    // Make game and ui globally accessible for debugging
-    window.game = game;
-    window.ui = ui;
-    
-    // Generate sounds
-    generateChessSounds();
+    ui.renderBoard();
+    ui.updateUI();
 });

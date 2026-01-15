@@ -3,104 +3,71 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chess Game - 3D Edition</title>
+    <title>Chess Game</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <!-- Loader -->
-    <div class="loader-container" id="loaderContainer">
-        <div class="loader">
-            <div class="chess-piece-loader"></div>
-            <p class="loader-text">Chess Game</p>
-            <div class="loader-bar">
-                <div class="loader-fill"></div>
-            </div>
+    <div id="loader" class="loader">
+        <div class="chess-piece-loader">
+            <div class="piece">♔</div>
+        </div>
+        <p>Loading Chess Game...</p>
+        <div class="progress-bar">
+            <div class="progress-fill"></div>
         </div>
     </div>
 
-    <!-- Main Container -->
-    <div class="container" id="mainContainer" style="display: none;">
+    <!-- Main Game Container -->
+    <div id="gameContainer" class="game-container">
         <!-- Header -->
-        <header class="header">
-            <h1 class="title">♟ Chess Game 3D ♟</h1>
-            <div class="header-right">
-                <span class="game-mode" id="gameModeDisplay">Player vs Player</span>
-                <button class="reset-btn" id="resetBtn">New Game</button>
+        <div class="game-header">
+            <h1>♟ CHESS GAME ♟</h1>
+            <button id="resetBtn" class="btn-reset">New Game</button>
+        </div>
+
+        <!-- Game Stats -->
+        <div class="game-stats">
+            <div class="stats-section">
+                <h3>White Captured</h3>
+                <div id="whiteCaptured" class="captured-pieces"></div>
             </div>
-        </header>
-
-        <!-- Main Content -->
-        <div class="content">
-            <!-- Game Stats -->
-            <div class="game-stats">
-                <div class="stat-box white-stat">
-                    <h3>White</h3>
-                    <p id="whiteCaptured">Captured: 0</p>
-                    <p id="whiteTurn">Waiting...</p>
-                </div>
-                <div class="stat-box black-stat">
-                    <h3>Black</h3>
-                    <p id="blackCaptured">Captured: 0</p>
-                    <p id="blackTurn">Waiting...</p>
-                </div>
+            <div class="stats-section middle">
+                <h3 id="turnDisplay">White's Turn</h3>
+                <p id="gameStatus" class="game-status"></p>
             </div>
-
-            <!-- Game Board -->
-            <div class="game-board-container">
-                <div class="board-wrapper">
-                    <div id="chessboard" class="chessboard"></div>
-                </div>
-            </div>
-
-            <!-- Control Panel -->
-            <div class="control-panel">
-                <div class="mode-selector">
-                    <button class="mode-btn active" id="playerVsPlayerBtn" data-mode="pvp">
-                        👥 Player vs Player
-                    </button>
-                    <button class="mode-btn" id="playerVsAIBtn" data-mode="pva">
-                        🤖 Player vs AI
-                    </button>
-                </div>
-
-                <div class="difficulty-selector" id="difficultySelector" style="display: none;">
-                    <label>AI Difficulty:</label>
-                    <select id="difficultySelect">
-                        <option value="easy">Easy</option>
-                        <option value="medium" selected>Medium</option>
-                        <option value="hard">Hard</option>
-                    </select>
-                </div>
-
-                <div class="game-info">
-                    <p id="moveHistory">Move: 1</p>
-                    <p id="gameStatus">Game Started</p>
-                </div>
-
-                <button class="undo-btn" id="undoBtn">↶ Undo</button>
+            <div class="stats-section">
+                <h3>Black Captured</h3>
+                <div id="blackCaptured" class="captured-pieces"></div>
             </div>
         </div>
 
-        <!-- Move History -->
-        <div class="move-history">
-            <h3>Move History</h3>
-            <div id="historyList" class="history-list"></div>
+        <!-- Chessboard -->
+        <div class="board-wrapper">
+            <div id="chessboard" class="chessboard"></div>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="control-panel">
+            <div class="move-history-section">
+                <h4>Move History</h4>
+                <div id="moveHistory" class="move-history"></div>
+            </div>
         </div>
 
         <!-- Sound Toggle -->
-        <button class="sound-toggle" id="soundToggle" title="Toggle Sound">🔊</button>
+        <button id="soundToggle" class="sound-toggle" title="Toggle Sound">🔊</button>
     </div>
 
-    <!-- Audio Elements -->
-    <audio id="moveSound" preload="auto">
-        <source src="data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQIAAAAAAAA=" type="audio/wav">
-    </audio>
-    <audio id="captureSound" preload="auto">
-        <source src="data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQIAAAAAAAA=" type="audio/wav">
-    </audio>
-    <audio id="checkSound" preload="auto">
-        <source src="data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQIAAAAAAAA=" type="audio/wav">
-    </audio>
+    <!-- Result Modal -->
+    <div id="resultModal" class="result-modal">
+        <div class="result-content">
+            <div class="result-emoji">🎉</div>
+            <h2 id="resultTitle">Game Over!</h2>
+            <p id="resultMessage">Well played!</p>
+            <button id="playAgainBtn" class="btn-play-again">Play Again</button>
+        </div>
+    </div>
 
     <script src="script.js"></script>
 </body>
